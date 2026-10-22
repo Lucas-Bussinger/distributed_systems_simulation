@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package ring_election;
+
+service RingService {
+    // Passa a mensagem de eleição ao longo do anel
+    rpc PassElection (ElectionMessage) returns (ElectionResponse);
+
+    // Anuncia o coordenador eleito aos nós do anel
+    rpc AnnounceCoordinator (CoordinatorMessage) returns (CoordinatorResponse);
+
+    // Heartbeat periódico enviado ao líder atual
+    rpc Ping (PingRequest) returns (PingResponse);
+
+    // Endpoint administrativo para disparar eleição ou checar status
+    rpc TriggerElection (TriggerRequest) returns (TriggerResponse);
+    rpc GetStatus (StatusRequest) returns (StatusResponse);
+}
+
+message NodeInfo {
+    int32 node_id = 1;
+    string address = 2;
+}
+
+message ElectionMessage {
+    int32 initiator_id = 1;
+    repeated int32 active_nodes = 2; // IDs dos nós ativos coletados ao redor do anel
+    int32 hop_count = 3;            // Número de saltos percorridos
+    double start_time = 4;          // Timestamp do início da eleição
+    repeated NodeInfo active_node_infos = 5; // Lista de nós ativos com seus endereços
+}
+
+message ElectionResponse {
+    bool accepted = 1;
+    string message = 2;
+}
+
+message CoordinatorMessage {
+    int32 leader_id = 1;
+    string leader_address = 2;      // Endereço de rede do líder eleito
+    int32 announcer_id = 3;
+    int32 hop_count = 4;
+    repeated int32 active_nodes = 5;
+    double start_time = 6;
+    repeated NodeInfo active_node_infos = 7;
+}
+
+message CoordinatorResponse {
+    bool accepted = 1;
+    string message = 2;
+}
+
+message PingRequest {
+    int32 sender_id = 1;
+}
+
+message PingResponse {
+    int32 node_id = 1;
+    int32 current_leader = 2;
+    string status = 3;
+}
+
+message TriggerRequest {
+    string reason = 1;
+}
+
+message TriggerResponse {
+    bool started = 1;
+    string message = 2;
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+    int32 node_id = 1;
+    string address = 2;
+    int32 current_leader = 3;
+    string current_leader_address = 4;
+    bool is_leader = 5;
+    bool election_in_progress = 6;
+    repeated int32 known_active_nodes = 7;
+    string state = 8;
+}
