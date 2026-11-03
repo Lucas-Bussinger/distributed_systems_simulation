@@ -159,7 +159,8 @@ sudo docker compose exec no_1 python src/client_2pc.py balances
 # 3. Observar no terminal a eleição de um Novo Líder pelo Algoritmo do Anel
 sudo docker compose logs -f no_1
 
-# 4. Sincronizar o cluster e desobstruir a transação bloqueada via Novo Líder
+# 4. Sincronizar o cluster e desobstruir a transação bloqueada via Novo Líder (resolve ou sync)
+sudo docker compose exec no_1 python src/client_2pc.py resolve
 sudo docker compose exec no_1 python src/client_2pc.py sync
 
 # 5. Confirmar liberação dos locks e integridade dos saldos
