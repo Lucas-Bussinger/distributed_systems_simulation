@@ -1,0 +1,200 @@
+services:
+  no_1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_1
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_1:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_2
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_2:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_3
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_3:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_4:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_4
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_4:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_5:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_5
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_5:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_6:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_6
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_6:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_7:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_7
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_7:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_8:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_8
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_8:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_9:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_9
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_9:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0
+
+  no_10:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: no_10
+    restart: unless-stopped
+    volumes:
+      - ..:/app
+    environment:
+      - NODE_ID=random
+      - MY_ADDR=no_10:50051
+      - PORT=50051
+      - RING_TOPOLOGY=no_1:50051,no_2:50051,no_3:50051,no_4:50051,no_5:50051,no_6:50051,no_7:50051,no_8:50051,no_9:50051,no_10:50051
+      - HEARTBEAT_INTERVAL=3.0
+      - HEARTBEAT_TIMEOUT=1.5
+      - RPC_TIMEOUT=2.0
+      - TWO_PC_TIMEOUT=2.5
+      - MISSED_HEARTBEATS_LIMIT=2
+      - STARTUP_GRACE_PERIOD=5.0

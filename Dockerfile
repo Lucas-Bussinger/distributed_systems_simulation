@@ -3,6 +3,7 @@ FROM python:3.10-slim
 
 # Evita buffering de logs em stdout/stderr no Python
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH="/app:/app/src"
 
 # Instala ferramentas úteis de rede para diagnóstico e testes interativos
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,4 +23,4 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Executa o nó do algoritmo distribuído
-CMD ["python", "-u", "node.py"]
+CMD ["python", "-u", "src/node.py"]

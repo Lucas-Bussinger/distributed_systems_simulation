@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package bank_2pc;
+
+service TwoPhaseCommitService {
+    // -------------------------------------------------------------
+    // Métodos obrigatórios do protocolo 2PC (Coordenador -> Coortes)
+    // -------------------------------------------------------------
+
+    // Fase 1: Coordenador solicita preparação e voto (Request Vote)
+    rpc PrepareTransaction (TransactionData) returns (PrepareResponse);
+
+    // Fase 2: Coordenador comanda a efetivação (Commit)
+    rpc CommitTransaction (TransactionID) returns (CommitResponse);
+
+    // Fase 2: Coordenador comanda o cancelamento/descarte (Abort)
+    rpc AbortTransaction (TransactionID) returns (AbortResponse);
+
+    // -------------------------------------------------------------
+    // Interface com o Cliente e Recuperação de Bloqueio (2PC)
+    // -------------------------------------------------------------
+
+    // Cliente submete uma transação bancária ao Líder (Coordenador)
+    rpc SubmitTransaction (ClientTransactionRequest) returns (ClientTransactionResponse);
+
+    // Consulta de saldos e estado dos locks das contas no nó
+    rpc GetBankState (BankStateRequest) returns (BankStateResponse);
+
+    // Recuperação de transação bloqueada após eleição de novo líder
+    rpc ResolveBlockedTransaction (ResolveRequest) returns (ResolveResponse);
+
+    // Configuração de ganchos de teste / injeção de falhas (Chaos Engineering)
+    rpc SetChaosHook (ChaosRequest) returns (ChaosResponse);
+
+    // Sincronização de estado contábil pós-recuperação (Crash-Recovery)
+    rpc SyncBankState (BankStateRequest) returns (BankStateResponse);
+}
+
+message TransactionData {
+    string transaction_id = 1;
+    string source_account = 2;
+    string destination_account = 3;
+    double amount = 4;
+    string sender_node = 5;
+    double timestamp = 6;
+}
+
+message PrepareResponse {
+    string transaction_id = 1;
+    bool vote_commit = 2;          // true = "SIM", false = "NÃO"
+    string reason = 3;               // Motivo em caso de voto "NÃO"
+    int32 node_id = 4;
+    string node_address = 5;
+}
+
+message TransactionID {
+    string transaction_id = 1;
+    string reason = 2;               // Motivo de eventual abort
+}
+
+message CommitResponse {
+    string transaction_id = 1;
+    bool committed = 2;
+    string message = 3;
+    int32 node_id = 4;
+}
+
+message AbortResponse {
+    string transaction_id = 1;
+    bool aborted = 2;
+    string message = 3;
+    int32 node_id = 4;
+}
+
+message ClientTransactionRequest {
+    string source_account = 1;
+    string destination_account = 2;
+    double amount = 3;
+    bool test_crash_leader_after_prepare = 4; // Cenário 4: simular crash do líder pós-Fase 1
+}
+
+message ClientTransactionResponse {
+    string transaction_id = 1;
+    bool success = 2;
+    string status = 3; // "COMMITTED", "ABORTED", "BLOCKED_ON_CRASH", "REDIRECT_TO_LEADER"
+    string message = 4;
+    int32 coordinator_id = 5;
+    string coordinator_address = 6;
+    double latency_ms = 7;
+}
+
+message AccountInfo {
+    string account_id = 1;
+    double balance = 2;
+    bool is_locked = 3;
+    string locked_by_tx = 4;
+}
+
+message BankStateRequest {}
+
+message BankStateResponse {
+    int32 node_id = 1;
+    string node_address = 2;
+    repeated AccountInfo accounts = 3;
+    int32 pending_transactions_count = 4;
+    repeated string pending_tx_ids = 5;
+}
+
+message ResolveRequest {
+    string transaction_id = 1;
+    string action = 2; // "ABORT" ou "COMMIT"
+}
+
+message ResolveResponse {
+    string transaction_id = 1;
+    bool resolved = 2;
+    string message = 3;
+}
+
+message ChaosRequest {
+    bool crash_after_prepare = 1; // Cenário 4: Líder colapsa pós-Fase 1 (antes do Commit)
+    bool hang_prepare = 2;        // Cenário 3: Participante não responde na Fase 1 (Timeout)
+    bool crash_node = 3;          // Simula crash-stop imediato do processo
+}
+
+message ChaosResponse {
+    bool ack = 1;
+    string message = 2;
+}

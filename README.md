@@ -1,91 +1,273 @@
 # MC714 - Sistemas Distribuídos: Trabalho 2
-## Algoritmo 1: Eleição de Líder em Anel (Ring Election Algorithm)
+## Implementação e Avaliação Experimental de Algoritmos Distribuídos
 
-Este projeto implementa o **Algoritmo de Eleição em Anel (Tanenbaum)** sobre uma topologia de **10 nós lógicos** executando em contêineres Docker independentes e comunicando-se via **gRPC**.
+Este projeto contém a implementação de dois algoritmos distribuídos clássicos executando em contêineres Docker independentes (`python:3.10-slim`) e comunicando-se exclusivamente via **gRPC sobre TCP**:
 
-Os IDs de cada nó são **gerados aleatoriamente** na inicialização (IDs não-sequenciais), e o algoritmo elege como líder o nó que possuir o maior ID sorteado.
-
----
-
-### 1. Modelo do Sistema e Hipóteses
-
-- **Modelo Temporal**: Parcialmente síncrono. As chamadas RPC possuem *deadlines* e *timeouts* explícitos para detecção de indisponibilidade de nós.
-- **Topologia**: Anel lógico ordenado circularmente de 10 nós:
-  $$\text{no\_1} \rightarrow \text{no\_2} \rightarrow \text{no\_3} \rightarrow \dots \rightarrow \text{no\_10} \rightarrow \text{no\_1}$$
-- **Identificadores Aleatórios**: Cada contêiner gera dinamicamente um ID numérico aleatório único (`random`).
-- **Modelo de Falhas**: *Crash-stop*. Nós podem falhar parando suas execuções.
-- **Tratamento de Falhas (Tolerância a Falhas no Anel)**:
-  - Quando um nó repassa a mensagem para o seu sucessor imediato, caso ocorra timeout ou erro de rede, o nó **pula** o sucessor inativo e tenta o próximo nó na ordem circular do anel.
-- **Detecção de Falha do Líder (Heartbeat)**:
-  - Todos os nós que não são líderes enviam pings periódicos (`rpc Ping`) ao endereço do líder atual.
-  - Após 2 falhas consecutivas de heartbeat, o líder é considerado morto e uma nova rodada de eleição é disparada automaticamente com salto sobre o nó falho.
-- **Critério de Eleição**: O nó com o **maior ID numérico** entre os ativos é eleito o novo coordenador.
+1. **Algoritmo de Eleição de Líder em Anel** (*Ring Election Algorithm* - van Steen & Tanenbaum): Topologia circular com IDs aleatórios não-sequenciais, salto sobre nós inativos (*skip*) e detecção de falhas via *heartbeat*.
+2. **Protocolo 2PC (Two-Phase Commit) Bancário**: Coordenação de transações financeiras distribuídas (atualização atômica de saldos e controle de concorrência com locks em memória), utilizando o Líder eleito como Coordenador e os demais nós como réplicas/coortes.
 
 ---
 
-### 2. Estrutura dos Arquivos
+## 1. Estrutura do Diretório
 
-- `protos/election.proto`: Definição dos serviços e mensagens gRPC (`RingService`, `NodeInfo`).
-- `generate_protos.py`: Script para compilar o arquivo `.proto` em stubs Python (`election_pb2.py` e `election_pb2_grpc.py`).
-- `node.py`: Implementação do processo do nó distribuído (IDs aleatórios dinâmicos, lógica do anel, heartbeat e tolerância a falhas).
-- `client.py`: Ferramenta CLI para checar o status de todos os 10 nós ou forçar eleições manuais.
-- `run_experiments.py`: Script automatizado para medição de latência, saltos e percentis (p50, p95, p99) para o relatório.
-- `compose.yaml`: Configuração dos 10 serviços Docker com suas variáveis de ambiente e rede.
-- `Dockerfile`: Imagem Python com suporte a gRPC e utilitários de diagnóstico de rede.
-
----
-
-### 3. Como Executar os 10 Nós
-
-Como a imagem base já está construída, basta subir os 10 contêineres:
-
-```bash
-sudo docker compose down
-sudo docker compose up -d
+```
+distributed_systems_simulation/
+├── protos/                          # Contratos de comunicação gRPC (.proto)
+│   ├── election.proto               # Serviços do Anel de Eleição e Heartbeat
+│   └── bank_2pc.proto               # Métodos das Fases 1 (Prepare) e 2 (Commit/Abort) do 2PC
+│
+├── src/                             # Código-fonte Python
+│   ├── node.py                      # Nó lógico (Anel + Coordenador/Coorte 2PC)
+│   ├── client.py                    # CLI de inspeção e controle da Eleição em Anel
+│   ├── client_2pc.py                # CLI para consulta de saldos, locks e transferências
+│   ├── test_2pc_scenarios.py        # Suíte automatizada de testes e cenários de falha do 2PC
+│   ├── run_experiments.py           # Coleta de métricas e percentis do Algoritmo do Anel
+│   ├── run_2pc_experiments.py       # Coleta de métricas e percentis do 2PC (3, 5 e 10 nós)
+│   └── generate_protos.py           # Compilação dos arquivos .proto em stubs Python
+│
+├── docker/                          # Arquivos de contêiner e orquestração
+│   ├── Dockerfile                   # Imagem base dos nós com dependências gRPC
+│   ├── compose.yaml                 # Configuração padrão com 10 nós lógicos
+│   ├── compose-3nodes.yaml          # Configuração com 3 nós lógicos
+│   └── compose-5nodes.yaml          # Configuração com 5 nós lógicos
+│
+├── compose.yaml                     # Redirecionador para docker/compose.yaml
+└── requirements.txt                 # Dependências Python (grpcio, grpcio-tools)
 ```
 
-Acompanhe os logs da eleição inicial em tempo real:
+---
+
+## 2. Inicialização do Ambiente
+
+### Construir as imagens e iniciar o cluster (10 nós):
+```bash
+sudo docker compose down
+sudo docker compose up -d --build
+```
+
+### Visualizar os logs da eleição inicial em tempo real:
 ```bash
 sudo docker compose logs -f
 ```
 
 ---
 
-### 4. Demonstração e Verificação
+## 3. Comandos de Verificação: Algoritmo de Eleição em Anel
 
-#### A. Verificando o Status do Cluster e os IDs Aleatórios
-Execute o script `client.py` de dentro de qualquer contêiner ativo:
+### A. Consultar status de todos os nós e identificador do líder eleito:
 ```bash
-sudo docker compose exec no_1 python client.py status
+sudo docker compose exec no_1 python src/client.py status
 ```
-*Saída esperada*: Tabela mostrando todos os 10 contêineres (`no_1` a `no_10`), seus respectivos IDs gerados aleatoriamente, e o nó com o maior ID eleito como `👑 LÍDER`.
 
----
-
-#### B. Injetando Falha no Líder
-Identifique na tabela qual contêiner foi eleito líder (por exemplo, `no_7` ou `no_9`).
-Pare o contêiner do líder atual:
+### B. Disparar uma eleição manual a partir de qualquer nó:
 ```bash
+sudo docker compose exec no_1 python src/client.py trigger --node no_2:50051
+```
+
+### C. Simular queda de um nó intermediário (salto no anel):
+```bash
+# 1. Parar um nó intermediário (ex: no_3)
+sudo docker compose stop no_3
+
+# 2. Disparar eleição a partir do nó anterior
+sudo docker compose exec no_1 python src/client.py trigger --node no_2:50051
+
+# 3. Observar nos logs o nó anterior pulando o nó inativo
+sudo docker compose logs no_2 | tail -n 20
+
+# 4. Verificar a integridade do cluster e o novo líder
+sudo docker compose exec no_1 python src/client.py status
+
+# 5. Reiniciar o nó
+sudo docker compose start no_3
+```
+
+### D. Simular queda do Líder atual (detecção via heartbeat e re-eleição):
+```bash
+# 1. Identificar qual contêiner é o líder atual (coluna PAPEL)
+sudo docker compose exec no_1 python src/client.py status
+
+# 2. Derrubar o nó que atua como líder (substitua no_X pelo contêiner líder identificado)
 sudo docker compose stop no_X
-```
-*(substitua `no_X` pelo contêiner do líder)*
 
-**O que observar nos logs**:
-1. Os demais 9 nós detectam a ausência do líder via falha no *heartbeat*.
-2. Uma nova eleição circula pelo anel.
-3. Ao tentar entregar a mensagem para o nó caído, o antecessor sofre timeout e **pula** o nó falho.
-4. O nó ativo que tiver o próximo maior ID aleatório é eleito o novo líder!
+# 3. Acompanhar os nós detectando a ausência de resposta e elegendo o novo líder
+sudo docker compose logs -f no_1
 
-Verifique o novo status:
-```bash
-sudo docker compose exec no_1 python client.py status
+# 4. Verificar o novo líder eleito na tabela
+sudo docker compose exec no_1 python src/client.py status
+
+# 5. Reiniciar o nó anterior
+sudo docker compose start no_X
 ```
 
 ---
 
-### 5. Coleta de Métricas para o Relatório (MC714)
+## 4. Comandos de Verificação: Protocolo 2PC Bancário
 
-Execute a bateria de experimentos para calcular média, desvio e percentis (p50, p95, p99) para o anel de 10 nós:
+### A. Consultar saldos contábeis e locks em todas as réplicas:
 ```bash
-sudo docker compose exec no_1 python run_experiments.py --rounds 10
+sudo docker compose exec no_1 python src/client_2pc.py balances
+```
+
+### B. Executar transferência válida (Fase 1 Voto SIM -> Fase 2 Commit):
+```bash
+sudo docker compose exec no_1 python src/client_2pc.py transfer --source conta_A --dest conta_B --amount 100
+```
+Verificar que todas as réplicas atualizaram os saldos de forma idêntica:
+```bash
+sudo docker compose exec no_1 python src/client_2pc.py balances
+```
+
+### C. Simular falha por regra de negócio (Saldo Insuficiente -> Abort e Rollback):
+```bash
+sudo docker compose exec no_1 python src/client_2pc.py transfer --source conta_A --dest conta_B --amount 99999
+```
+Confirmar que os saldos foram integralmente preservados em todos os nós:
+```bash
+sudo docker compose exec no_1 python src/client_2pc.py balances
+```
+
+### D. Simular falha por conta inexistente:
+```bash
+sudo docker compose exec no_1 python src/client_2pc.py transfer --source conta_Fantasma --dest conta_B --amount 50
+```
+
+### E. Simular queda de participante na Fase 1 (Timeout gRPC -> Abort):
+```bash
+# 1. Parar um dos participantes seguidores (ex: no_4)
+sudo docker compose stop no_4
+
+# 2. Tentar efetuar uma transferência via líder
+sudo docker compose exec no_1 python src/client_2pc.py transfer --source conta_A --dest conta_B --amount 50
+
+# 3. Constatar que a ausência do nó foi computada como NÃO e a transação abortou
+sudo docker compose exec no_1 python src/client_2pc.py balances
+
+# 4. Reiniciar o participante e restabelecer sincronização
+sudo docker compose start no_4
+sudo docker compose exec no_1 python src/client_2pc.py sync --node no_4:50051
+```
+
+### F. Simular queda crítica do Líder pós-Fase 1 (Problema do Bloqueio):
+```bash
+# 1. Submeter transação que injeta crash no líder logo após coletar votos SIM da Fase 1
+sudo docker compose exec no_1 python src/client_2pc.py transfer --source conta_A --dest conta_B --amount 75 --crash-leader
+
+# 2. Constatar imediatamente que os nós retiveram o lock sobre as contas (estado PREPARED bloqueante)
+sudo docker compose exec no_1 python src/client_2pc.py balances
+
+# 3. Observar no terminal a eleição de um Novo Líder pelo Algoritmo do Anel
+sudo docker compose logs -f no_1
+
+# 4. Sincronizar o cluster e desobstruir a transação bloqueada via Novo Líder
+sudo docker compose exec no_1 python src/client_2pc.py sync
+
+# 5. Confirmar liberação dos locks e integridade dos saldos
+sudo docker compose exec no_1 python src/client_2pc.py balances
+```
+
+---
+
+## 5. Execução Automatizada da Suíte de Testes
+
+Para executar toda a rotina de validação e testes automatizados dos cenários de execução normal e cenários de falha em um único comando:
+
+```bash
+sudo docker compose exec no_1 python src/test_2pc_scenarios.py
+```
+
+---
+
+## 6. Coleta de Métricas Experimentais
+
+### 6.1 Algoritmo 1: Eleição em Anel (Tempo de Convergência e Percentis)
+
+#### Experimento em 10 Nós (Topologia Padrão):
+```bash
+sudo docker compose exec no_1 python src/run_experiments.py --rounds 20
+```
+
+#### Experimento em 5 Nós:
+```bash
+sudo docker compose -f docker/compose-5nodes.yaml down
+sudo docker compose -f docker/compose-5nodes.yaml up -d
+sudo docker compose -f docker/compose-5nodes.yaml exec no_1 python src/run_experiments.py --rounds 20
+```
+
+#### Experimento em 3 Nós:
+```bash
+sudo docker compose -f docker/compose-3nodes.yaml down
+sudo docker compose -f docker/compose-3nodes.yaml up -d
+sudo docker compose -f docker/compose-3nodes.yaml exec no_1 python src/run_experiments.py --rounds 20
+```
+
+---
+
+### 6.2 Algoritmo 2: Protocolo 2PC (Latência de Transação e Percentis)
+
+#### Experimento em 10 Nós (Topologia Padrão):
+```bash
+sudo docker compose down
+sudo docker compose up -d
+sudo docker compose exec no_1 python src/run_2pc_experiments.py --rounds 20
+```
+
+#### Experimento em 5 Nós:
+```bash
+sudo docker compose -f docker/compose-5nodes.yaml down
+sudo docker compose -f docker/compose-5nodes.yaml up -d
+sudo docker compose -f docker/compose-5nodes.yaml exec no_1 python src/run_2pc_experiments.py --rounds 20
+```
+
+#### Experimento em 3 Nós:
+```bash
+sudo docker compose -f docker/compose-3nodes.yaml down
+sudo docker compose -f docker/compose-3nodes.yaml up -d
+sudo docker compose -f docker/compose-3nodes.yaml exec no_1 python src/run_2pc_experiments.py --rounds 20
+```
+
+---
+
+## 7. Roteiro de Comandos para Gravação do Vídeo de Demonstração (5 Minutos)
+
+Para a gravação do vídeo demonstrativo com os integrantes da equipe, execute sequencialmente os seguintes blocos:
+
+```bash
+# PASSO 1: Subir o cluster e demonstrar o status inicial com líder eleito
+sudo docker compose up -d
+sudo docker compose exec no_1 python src/client.py status
+sudo docker compose exec no_1 python src/client_2pc.py balances
+
+# PASSO 2: Demonstrar uma transação bancária 2PC normal (Commit)
+sudo docker compose exec no_1 python src/client_2pc.py transfer --source conta_A --dest conta_B --amount 100
+sudo docker compose exec no_1 python src/client_2pc.py balances
+
+# PASSO 3: Demonstrar rejeição por regra de negócio (Saldo Insuficiente)
+sudo docker compose exec no_1 python src/client_2pc.py transfer --source conta_A --dest conta_B --amount 99999
+sudo docker compose exec no_1 python src/client_2pc.py balances
+
+# PASSO 4: Injeção de Falha em Participante (docker stop) e recuperação
+sudo docker compose stop no_3
+sudo docker compose exec no_1 python src/client_2pc.py transfer --source conta_A --dest conta_B --amount 50
+sudo docker compose start no_3
+sudo docker compose exec no_1 python src/client_2pc.py sync --node no_3:50051
+
+# PASSO 5: Injeção de Falha Crítica (Queda do Líder) e eleição do novo Líder
+sudo docker compose exec no_1 python src/client.py status
+sudo docker compose stop <container_lider>
+sudo docker compose logs -f no_1
+sudo docker compose exec no_1 python src/client.py status
+sudo docker compose start <container_lider>
+
+# PASSO 6: Execução da suíte de testes automatizada final
+sudo docker compose exec no_1 python src/test_2pc_scenarios.py
+```
+
+---
+
+## 8. Limpeza do Ambiente
+
+Para encerrar e remover todos os contêineres e redes criadas:
+```bash
+sudo docker compose down -v
 ```
