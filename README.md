@@ -228,9 +228,7 @@ sudo docker compose -f docker/compose-3nodes.yaml exec no_1 python src/run_2pc_e
 
 ---
 
-## 7. Roteiro de Comandos para Gravação do Vídeo de Demonstração (5 Minutos)
-
-Para a gravação do vídeo demonstrativo com os integrantes da equipe, execute sequencialmente os seguintes blocos:
+## 7. o que é demonstrado no vídeo do projeto:
 
 ```bash
 # PASSO 1: Subir o cluster e demonstrar o status inicial com líder eleito
