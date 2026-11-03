@@ -991,29 +991,53 @@ class DistributedBankNode(election_pb2_grpc.RingServiceServicer, bank_2pc_pb2_gr
 
         self.logger.info(
             f"🛠️ [RECUPERAÇÃO DE BLOQUEIO 2PC] Novo Coordenador Nó {self.node_id} resolvendo "
-            f"transação bloqueada {tx_id} com ação '{action}'..."
+            f"transação bloqueada '{tx_id}' com ação '{action}'..."
         )
 
-        tx_req = bank_2pc_pb2.TransactionID(
-            transaction_id=tx_id,
-            reason=f"Resolução de bloqueio pós-queda de coordenador via Novo Líder Nó {self.node_id}"
-        )
+        # Se tx_id for vazio ou "ALL", busca todas as transações pendentes ou com lock
+        tx_ids = []
+        if tx_id and tx_id != "ALL":
+            tx_ids = [tx_id]
+        else:
+            with self.bank_lock:
+                tx_ids = list(self.pending_transactions.keys())
+                for l_tx in self.account_locks.values():
+                    if l_tx and l_tx not in tx_ids:
+                        tx_ids.append(l_tx)
 
-        for addr in self.ring_addresses:
-            try:
-                with grpc.insecure_channel(addr) as channel:
-                    stub = bank_2pc_pb2_grpc.TwoPhaseCommitServiceStub(channel)
-                    if action == "COMMIT":
-                        stub.CommitTransaction(tx_req, timeout=self.two_pc_timeout)
-                    else:
-                        stub.AbortTransaction(tx_req, timeout=self.two_pc_timeout)
-            except Exception as e:
-                self.logger.warning(f"Aviso durante resolução em {addr}: {e}")
+        if not tx_ids and tx_id:
+            tx_ids = [tx_id]
+
+        for tid in tx_ids:
+            tx_req = bank_2pc_pb2.TransactionID(
+                transaction_id=tid,
+                reason=f"Resolução de bloqueio pós-queda de coordenador via Novo Líder Nó {self.node_id}"
+            )
+
+            # Executa localmente no próprio nó
+            if action == "COMMIT":
+                self.CommitTransaction(tx_req, None)
+            else:
+                self.AbortTransaction(tx_req, None)
+
+            # Envia para todos os outros nós ativos do anel
+            for addr in self.ring_addresses:
+                if addr == self.my_addr:
+                    continue
+                try:
+                    with grpc.insecure_channel(addr) as channel:
+                        stub = bank_2pc_pb2_grpc.TwoPhaseCommitServiceStub(channel)
+                        if action == "COMMIT":
+                            stub.CommitTransaction(tx_req, timeout=self.two_pc_timeout)
+                        else:
+                            stub.AbortTransaction(tx_req, timeout=self.two_pc_timeout)
+                except Exception as e:
+                    self.logger.warning(f"Aviso durante resolução de {tid} em {addr}: {e}")
 
         return bank_2pc_pb2.ResolveResponse(
-            transaction_id=tx_id,
+            transaction_id=tx_id or "ALL",
             resolved=True,
-            message=f"Transação {tx_id} resolvida como {action} em todos os nós sobreviventes."
+            message=f"Transação(ões) {tx_ids or [tx_id]} resolvida(s) como {action} em todos os nós sobreviventes."
         )
 
     def SetChaosHook(self, request, context):
@@ -1079,6 +1103,14 @@ class DistributedBankNode(election_pb2_grpc.RingServiceServicer, bank_2pc_pb2_gr
                         with self.bank_lock:
                             for acc in st.accounts:
                                 self.accounts[acc.account_id] = acc.balance
+                            # Limpa locks órfãos locais que não estejam pendentes no nó de referência
+                            active_txs = set(st.pending_tx_ids)
+                            for acc_name, l_tx in list(self.account_locks.items()):
+                                if l_tx not in active_txs:
+                                    self.logger.info(f"🧹 [SYNC] Liberando lock órfão da conta '{acc_name}' (Tx {l_tx})")
+                                    del self.account_locks[acc_name]
+                                    if l_tx in self.pending_transactions:
+                                        del self.pending_transactions[l_tx]
                             self._save_local_state()
                         self.logger.info(
                             f"🔄 [CRASH-RECOVERY] Saldos sincronizados com sucesso a partir de {addr}: "

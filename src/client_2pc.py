@@ -115,31 +115,75 @@ def submit_transfer(source, dest, amount, target_node=None, crash_leader=False):
         print(f"❌ Erro RPC ao submeter transação: {e.code()} - {e.details()}")
         return False
 
-def resolve_transaction(tx_id, action="ABORT", target_node=None):
-    """Resolve uma transação bloqueada usando o líder atual"""
+def find_pending_transactions(nodes=DEFAULT_NODES):
+    """Varre os nós do cluster em busca de IDs de transações com lock ou estado PREPARED pendente"""
+    pending = set()
+    for _, addr in nodes:
+        try:
+            with grpc.insecure_channel(addr) as ch:
+                stub = bank_2pc_pb2_grpc.TwoPhaseCommitServiceStub(ch)
+                res = stub.GetBankState(bank_2pc_pb2.BankStateRequest(), timeout=1.5)
+                for tx in res.pending_tx_ids:
+                    if tx:
+                        pending.add(tx)
+                for acc in res.accounts:
+                    if acc.is_locked and acc.locked_by_tx:
+                        pending.add(acc.locked_by_tx)
+        except Exception:
+            pass
+    return sorted(list(pending))
+
+def resolve_transaction(tx_id=None, action="ABORT", target_node=None):
+    """Resolve transação(ões) bloqueada(s) usando o líder atual (Coordenador)"""
     if not target_node:
         leader_id, leader_addr = get_current_leader()
         if not leader_addr:
             print("❌ Erro: Nenhum líder ativo encontrado!")
             return False
         target_node = leader_addr
-        print(f"🎯 Novo Líder para resolução: Nó {leader_id} em {leader_addr}")
+        print(f"🎯 Novo Líder Coordenador para resolução: Nó {leader_id} em {leader_addr}")
 
-    try:
-        with grpc.insecure_channel(target_node) as channel:
-            stub = bank_2pc_pb2_grpc.TwoPhaseCommitServiceStub(channel)
-            res = stub.ResolveBlockedTransaction(bank_2pc_pb2.ResolveRequest(
-                transaction_id=tx_id,
-                action=action
-            ), timeout=5.0)
-            print(f"✅ Transação {tx_id} resolvida: {res.message}")
-            return res.resolved
-    except Exception as e:
-        print(f"❌ Erro ao resolver transação: {e}")
-        return False
+    if not tx_id:
+        txs_to_resolve = find_pending_transactions()
+        if not txs_to_resolve:
+            print("ℹ️ Nenhuma transação pendente ou com lock ativo encontrada no cluster.")
+            return True
+        print(f"🔍 Transação(ões) pendente(s) identificada(s): {txs_to_resolve}")
+    else:
+        txs_to_resolve = [tx_id]
+
+    overall_success = True
+    for tid in txs_to_resolve:
+        try:
+            with grpc.insecure_channel(target_node) as channel:
+                stub = bank_2pc_pb2_grpc.TwoPhaseCommitServiceStub(channel)
+                res = stub.ResolveBlockedTransaction(bank_2pc_pb2.ResolveRequest(
+                    transaction_id=tid,
+                    action=action
+                ), timeout=5.0)
+                print(f"✅ Transação {tid} resolvida ({action}): {res.message}")
+        except Exception as e:
+            print(f"❌ Erro ao resolver transação {tid}: {e}")
+            overall_success = False
+
+    return overall_success
 
 def sync_nodes(target_node=None):
-    """Força sincronização contábil (Crash-Recovery) de um nó ou de todos"""
+    """
+    Sincroniza saldos contábeis pós-recuperação (Crash-Recovery)
+    e desobstrui automaticamente transações bloqueadas deixadas pelo líder anterior.
+    """
+    import time
+
+    # 1. Verifica e desobstrui transações bloqueadas via Novo Líder
+    pending = find_pending_transactions()
+    if pending:
+        print(f"⚠️ Identificada(s) {len(pending)} transação(ões) bloqueada(s) com locks retidos: {pending}")
+        print("🛠️ Acionando o Novo Coordenador (Líder) para liberar os locks (ABORT)...")
+        resolve_transaction(action="ABORT")
+        time.sleep(0.5)
+
+    # 2. Força sincronização contábil
     targets = [(target_node.split(":")[0], target_node)] if target_node else DEFAULT_NODES
     print("🔄 Forçando sincronização contábil com o cluster (Crash-Recovery)...")
     for cname, addr in targets:
@@ -160,7 +204,7 @@ if __name__ == "__main__":
     subparsers.add_parser("balances", help="Consulta saldos e locks em todas as réplicas")
 
     # Comando sync
-    sync_parser = subparsers.add_parser("sync", help="Sincroniza saldos contábeis pós-recuperação (Crash-Recovery)")
+    sync_parser = subparsers.add_parser("sync", help="Sincroniza saldos contábeis e desobstrui transações pendentes")
     sync_parser.add_argument("--node", default=None, help="Endereço do nó específico (ex: no_6:50051) ou None para todos")
 
     # Comando transfer
@@ -173,8 +217,8 @@ if __name__ == "__main__":
 
     # Comando resolve
     res_parser = subparsers.add_parser("resolve", help="Resolve transação bloqueada pelo líder anterior")
-    res_parser.add_argument("--tx-id", required=True, help="ID da transação bloqueada")
-    res_parser.add_argument("--action", default="ABORT", choices=["ABORT", "COMMIT"], help="Ação a tomar")
+    res_parser.add_argument("--tx-id", default=None, help="ID da transação bloqueada (opcional: se omitido, detecta e resolve todas)")
+    res_parser.add_argument("--action", default="ABORT", choices=["ABORT", "COMMIT"], help="Ação a tomar (default: ABORT)")
 
     args = parser.parse_args()
 
