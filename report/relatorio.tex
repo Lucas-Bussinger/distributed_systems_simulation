@@ -36,7 +36,7 @@
 \maketitle
 
 \begin{abstract}
-Este trabalho apresenta a implementação e a avaliação experimental de dois algoritmos distribuídos clássicos e complementares: a eleição de líder em anel e o protocolo de compromisso atômico \textit{Two-Phase Commit} (2PC), integrados em uma aplicação de transferências bancárias replicadas. O sistema executa sobre contêineres OCI independentes orquestrados por Docker Compose v2, configurados em topologias de 3, 5 e 10 nós lógicos, comunicando-se exclusivamente por gRPC sobre TCP com prazos de expiração (\textit{deadlines}) explícitos. O líder eleito pelo anel assume o papel de coordenador do 2PC, enquanto os demais nós operam como coortes participantes com controle estrito de concorrência e travas (\textit{locks}) de contas em memória. A suíte automatizada de testes validou propriedades de segurança e vivacidade em fluxos normais de commit, abort por saldo insuficiente, tolerância a crash de participantes na Fase~1 e a ocorrência do clássico problema do bloqueio (\textit{blocking problem}) sob queda do coordenador pós-\textit{prepare}, demonstrando sua resolução operacional autônoma através da reeleição no anel. Os ensaios quantitativos evidenciaram latências médias de 2PC de 6,73~ms, 10,46~ms e 20,01~ms para 3, 5 e 10 nós, respectivamente, com detalhamento de percentis (p50, p95 e p99) e discussão da complexidade de mensagens.
+Este trabalho apresenta a implementação e a avaliação experimental de dois algoritmos distribuídos clássicos e complementares: a eleição de líder em anel e o protocolo de compromisso atômico \textit{Two-Phase Commit} (2PC), integrados em uma aplicação de transferências bancárias replicadas. O sistema executa sobre contêineres OCI independentes orquestrados por Docker Compose v2, configurados em topologias de 3, 5 e 10 nós lógicos, comunicando-se exclusivamente por gRPC sobre TCP com prazos de expiração (\textit{deadlines}) explícitos. O líder eleito pelo anel assume o papel de coordenador do 2PC, enquanto os demais nós operam como coortes participantes com controle estrito de concorrência e travas (\textit{locks}) de contas em memória. A suíte automatizada de testes validou propriedades de segurança e vivacidade em fluxos normais de commit, abort por saldo insuficiente, tolerância a crash de participantes na Fase~1 e a ocorrência do clássico problema do bloqueio (\textit{blocking problem}) sob queda do coordenador pós-\textit{prepare}, demonstrando sua resolução operacional autônoma através da reeleição no anel. Os ensaios quantitativos de alta resolução evidenciaram tempos de convergência da eleição de 10,19~ms, 15,76~ms e 25,81~ms, e latências médias do 2PC de 7,75~ms, 11,00~ms e 21,06~ms para 3, 5 e 10 nós, respectivamente, com detalhamento de percentis (p50, p95 e p99) e discussão da complexidade de mensagens.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -145,7 +145,7 @@ As métricas analisadas foram: (i) \textbf{Tempo de Convergência da Eleição (
 Os dados experimentais consolidados constam nas Tabelas~\ref{tab:ring} e~\ref{tab:2pc}.
 
 \begin{table}[t]
-\caption{Convergência da eleição em anel (ms, 20 rodadas).}
+\caption{Convergência da eleição em anel (ms, 20 rodadas, amostragem 0,5~ms).}
 \label{tab:ring}
 \centering
 \small
@@ -153,9 +153,9 @@ Os dados experimentais consolidados constam nas Tabelas~\ref{tab:ring} e~\ref{ta
 \toprule
 Nós & Sucesso & Média & DP & p50 & p95 & p99 \\
 \midrule
-3  & 20/20 & 107,57 & 2,05 & 107,00 & 110,77 & 111,45 \\
-5  & 20/20 & 107,65 & 1,35 & 107,31 & 109,08 & 109,80 \\
-10 & 20/20 & 107,56 & 1,23 & 107,23 & 108,50 & 109,20 \\
+3  & 20/20 & 10,19 & 1,40 &  9,62 & 13,29 & 13,29 \\
+5  & 20/20 & 15,76 & 2,40 & 15,11 & 20,08 & 21,60 \\
+10 & 20/20 & 25,81 & 1,73 & 25,66 & 28,82 & 29,45 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -169,18 +169,18 @@ Nós & Sucesso & Média & DP & p50 & p95 & p99 \\
 \toprule
 Nós & Sucesso & Média & DP & p50 & p95 & p99 \\
 \midrule
-3  & 20/20 & 6,73 & 0,78 & 6,52 & 7,68 & 8,99 \\
-5  & 20/20 & 10,46 & 1,21 & 10,17 & 12,83 & 14,02 \\
-10 & 20/20 & 20,01 & 2,16 & 19,31 & 24,18 & 26,16 \\
+3  & 20/20 &  7,75 & 1,08 &  7,41 &  9,40 &  9,67 \\
+5  & 20/20 & 11,00 & 1,03 & 10,95 & 12,43 & 13,33 \\
+10 & 20/20 & 21,06 & 1,55 & 21,22 & 23,44 & 24,70 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Análise do Protocolo 2PC Bancário}
-A Tabela~\ref{tab:2pc} evidencia um aumento estrito da latência média com o número de coortes: 6,73~ms (3 nós), 10,46~ms (5 nós) e 20,01~ms (10 nós), um salto de quase $3\times$ entre 3 e 10 nós. Para $N$ nós, o 2PC requer $2(N-1)$ mensagens entre coordenador e coortes ($O(N)$ mensagens). Como a Fase~1 e a Fase~2 aguardam a última resposta no caminho crítico, o acréscimo de participantes eleva a probabilidade de atrasos por chaveamento de threads e contenção de CPU, expandindo a cauda de latência: o p99 aumentou de 8,99~ms para 26,16~ms. A taxa de êxito foi de 100\% nas 60 transações.
+A Tabela~\ref{tab:2pc} evidencia um aumento estrito da latência média com o número de coortes: 7,75~ms (3 nós), 11,00~ms (5 nós) e 21,06~ms (10 nós), um salto de $2,72\times$ entre 3 e 10 nós. Para $N$ nós, o 2PC requer $2(N-1)$ mensagens de controle entre coordenador e coortes ($O(N)$ mensagens). Como a Fase~1 e a Fase~2 aguardam a última resposta no caminho crítico, o acréscimo de participantes eleva a probabilidade de atrasos por chaveamento de threads e contenção de CPU, expandindo a cauda de latência: o p99 aumentou de 9,67~ms para 24,70~ms. A taxa de êxito foi de 100\% nas 60 transações.
 
-\subsection{Análise da Eleição em Anel e Limitações de Medição}
-Na Tabela~\ref{tab:ring}, as médias permaneceram estabilizadas em $\approx 107,6$~ms em todas as escalas. Embora a teoria dite $2N$ encaminhamentos ($O(N)$ saltos), o script cliente consulta o status por amostragem periódica de 100~ms (\texttt{time.sleep(0.1)}). Como a propagação das mensagens gRPC sobre a rede loopback local consome menos de 10~ms mesmo em 10 nós, o valor registrado reflete a granularidade do \textit{polling} somada ao handshake gRPC, mascarando a complexidade assintótica do algoritmo e demonstrando a relevância de registrar carimbos temporais internos aos nós.
+\subsection{Análise da Eleição em Anel e Resolução de Amostragem}
+Com a régua de amostragem de alta resolução ajustada para 0,5~ms e reutilização de canal gRPC persistente, a Tabela~\ref{tab:ring} revela com nitidez a complexidade assintótica $O(N)$ do algoritmo de anel: a latência média de convergência escala linearmente de 10,19~ms com 3 nós para 15,76~ms em 5 nós e 25,81~ms em 10 nós. Esse crescimento reflete a propagação sequencial das mensagens ($N$ encaminhamentos de eleição e $N$ de anúncio do coordenador, totalizando $2N$ saltos). O desvio padrão manteve-se reduzido ($\le 2,40$~ms), e o p99 atingiu 29,45~ms em 10 nós. A superação do artefato anterior (que ficava artificialmente retido em $\approx 107$~ms devido a sondagens com sono de 100~ms) confirma que a redução da janela de observação permitiu capturar a dinâmica física real do anel sobre a rede loopback local.
 
 \section{Ameaças à Validade e Limitações}
 \begin{itemize}

@@ -68,25 +68,29 @@ def calculate_percentiles(data: List[float]):
         "std": std,
     }
 
-def run_election_trial(target_addr: str, timeout: float = 6.0) -> dict:
-    t0 = time.time()
+def run_election_trial(target_addr: str, timeout: float = 6.0, poll_interval: float = 0.0005) -> dict:
     with grpc.insecure_channel(target_addr) as channel:
         stub = election_pb2_grpc.RingServiceStub(channel)
-        res = stub.TriggerElection(
-            election_pb2.TriggerRequest(reason="experiment_trial"),
-            timeout=timeout
-        )
+        t0 = time.perf_counter()
+        try:
+            res = stub.TriggerElection(
+                election_pb2.TriggerRequest(reason="experiment_trial"),
+                timeout=timeout
+            )
+        except Exception as e:
+            return {"success": False, "error": f"Erro RPC ao disparar eleição: {e}"}
+
         if not res.started:
             return {"success": False, "error": "Eleição não iniciada (já em andamento?)"}
 
-    while time.time() - t0 < timeout:
-        time.sleep(0.1)
-        try:
-            with grpc.insecure_channel(target_addr) as channel:
-                stub = election_pb2_grpc.RingServiceStub(channel)
-                st = stub.GetStatus(election_pb2.StatusRequest(), timeout=1.0)
+        # Polling de alta resolução com canal persistente e régua mínima viável (0.5 ms)
+        status_req = election_pb2.StatusRequest()
+        while time.perf_counter() - t0 < timeout:
+            time.sleep(poll_interval)
+            try:
+                st = stub.GetStatus(status_req, timeout=1.0)
                 if not st.election_in_progress and st.current_leader > 0:
-                    convergence_time_ms = (time.time() - t0) * 1000.0
+                    convergence_time_ms = (time.perf_counter() - t0) * 1000.0
                     return {
                         "success": True,
                         "leader": st.current_leader,
@@ -94,15 +98,16 @@ def run_election_trial(target_addr: str, timeout: float = 6.0) -> dict:
                         "latency_ms": convergence_time_ms,
                         "active_nodes": list(st.known_active_nodes)
                     }
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     return {"success": False, "error": "Timeout aguardando convergência"}
 
-def run_experiment_suite(target_node="no_1:50051", rounds=10):
+def run_experiment_suite(target_node="no_1:50051", rounds=10, poll_interval: float = 0.0005):
     print("=" * 75)
     print(f"📊 INICIANDO BATERIA DE EXPERIMENTOS: {rounds} RODADAS (ANEL DE 10 NÓS)")
     print(f"Nó iniciador alvo: {target_node}")
+    print(f"Régua de amostragem (polling): {poll_interval * 1000.0:.2f} ms")
     print("=" * 75)
 
     latencies = []
@@ -110,7 +115,7 @@ def run_experiment_suite(target_node="no_1:50051", rounds=10):
 
     for i in range(1, rounds + 1):
         print(f"Executando rodada {i}/{rounds}...", end=" ", flush=True)
-        res = run_election_trial(target_node)
+        res = run_election_trial(target_node, poll_interval=poll_interval)
         if res["success"]:
             lat = res["latency_ms"]
             latencies.append(lat)
@@ -138,7 +143,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Automação experimental do Algoritmo do Anel")
     parser.add_argument("--node", default="no_1:50051", help="Endereço do nó alvo")
     parser.add_argument("--rounds", type=int, default=10, help="Número de rodadas para teste")
+    parser.add_argument("--poll-interval", type=float, default=0.0005, help="Intervalo de amostragem em segundos (default: 0.0005 = 0.5 ms)")
     args = parser.parse_args()
 
-    run_experiment_suite(target_node=args.node, rounds=args.rounds)
+    run_experiment_suite(target_node=args.node, rounds=args.rounds, poll_interval=args.poll_interval)
 
