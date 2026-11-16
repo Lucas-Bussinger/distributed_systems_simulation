@@ -2,6 +2,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{booktabs}
+\usepackage{graphicx}
 \usepackage{url}
 \usepackage{array}
 \usepackage{amsmath,amssymb}
@@ -50,7 +51,7 @@ Neste projeto, implementamos e investigamos empiricamente o Algoritmo de Eleiç�
 
 A integração entre ambos os algoritmos resolve uma fragilidade inerente ao 2PC puro. No 2PC tradicional, o coordenador representa um ponto único de falha (\textit{single point of failure}); caso o coordenador colapse após os participantes votarem SIM na Fase~1 (\textit{prepare}) e antes de emitir a decisão da Fase~2, os participantes entram em estado de incerteza e bloqueio permanente, incapazes de decidir unilateralmente sem violar a segurança. Ao acoplar um detector de falhas baseado em \textit{heartbeats} periódicos e o algoritmo de eleição em anel, nosso sistema detecta a inatividade do coordenador, elege dinamicamente um novo líder e executa uma rotina cooperativa de resolução da pendência, restaurando a vivacidade do cluster.
 
-O artefato foi desenvolvido em Python 3.10 com comunicação estritamente baseada em stubs gerados por \texttt{grpcio} v1.59.0 a partir de contratos Protocol Buffers (\texttt{proto3}), sendo orquestrado por contêineres Docker independentes. Conforme as diretrizes da disciplina, nenhum componente de terceiros que implemente os algoritmos distribuídos foi utilizado; toda a lógica do anel, coordenação do 2PC, transações contábeis e mecanismos de injeção de caos foi concebida e implementada integralmente pelos autores.
+O sistema foi desenvolvido em Python 3.10 com comunicação estritamente baseada em stubs gerados por \texttt{grpcio} v1.59.0 a partir de contratos Protocol Buffers (\texttt{proto3}), sendo orquestrado por contêineres Docker independentes. Conforme as diretrizes da disciplina, nenhum componente de terceiros que implemente os algoritmos distribuídos foi utilizado; toda a lógica do anel, coordenação do 2PC, transações contábeis e mecanismos de injeção de caos foi concebida e implementada integralmente pelos autores.
 
 \section{Modelo do Sistema e Propriedades de Correção}
 A especificação formal do modelo sob o qual os algoritmos operam é pré-requisito mandatório para delimitar garantias teóricas e interpretar resultados empíricos. A seguir, declaramos e justificamos os pressupostos para cada um dos dois algoritmos desenvolvidos.
@@ -142,10 +143,24 @@ As métricas analisadas foram: (i) \textbf{Tempo de Convergência da Eleição (
 \textbf{Ambiente de Execução:} Processador AMD Ryzen 5 5600 6-Core (4 vCPUs alocadas, 3,8~GiB RAM DDR4), Debian Linux (Kernel 6.12.116), Docker Engine 29.9.3, Compose v2, imagem \texttt{python:3.10-slim}, \texttt{grpcio 1.59.0}. Duração agregada dos ensaios de $\approx 110$~s sem aquecimento prévio separado. Estatísticas (Média, DP, p50, p95 e p99) obtidas por interpolação linear.
 
 \section{Resultados e Discussão}
-Os dados experimentais consolidados constam nas Tabelas~\ref{tab:ring} e~\ref{tab:2pc}.
+Os dados experimentais consolidados constam nas Tabelas~\ref{tab:ring} e~\ref{tab:2pc}, com representações gráficas do comportamento temporal e de cauda ilustradas nas Figuras~\ref{fig:ring} e~\ref{fig:2pc}.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\columnwidth]{grafico_eleicao.pdf}
+\caption{Convergência da eleição em anel em função do número de nós (média com $\pm 1$ desvio padrão e percentis p50, p95 e p99).}
+\label{fig:ring}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\columnwidth]{grafico_2pc.pdf}
+\caption{Latência ponta a ponta do 2PC em função do número de nós participantes (média com $\pm 1$ desvio padrão e percentis p50, p95 e p99).}
+\label{fig:2pc}
+\end{figure}
 
 \begin{table}[t]
-\caption{Convergência da eleição em anel (ms, 20 rodadas, amostragem 0,5~ms).}
+\caption{Convergência da eleição em anel (ms, 20 rodadas).}
 \label{tab:ring}
 \centering
 \small
@@ -179,8 +194,10 @@ Nós & Sucesso & Média & DP & p50 & p95 & p99 \\
 \subsection{Análise do Protocolo 2PC Bancário}
 A Tabela~\ref{tab:2pc} evidencia um aumento estrito da latência média com o número de coortes: 7,75~ms (3 nós), 11,00~ms (5 nós) e 21,06~ms (10 nós), um salto de $2,72\times$ entre 3 e 10 nós. Para $N$ nós, o 2PC requer $2(N-1)$ mensagens de controle entre coordenador e coortes ($O(N)$ mensagens). Como a Fase~1 e a Fase~2 aguardam a última resposta no caminho crítico, o acréscimo de participantes eleva a probabilidade de atrasos por chaveamento de threads e contenção de CPU, expandindo a cauda de latência: o p99 aumentou de 9,67~ms para 24,70~ms. A taxa de êxito foi de 100\% nas 60 transações.
 
-\subsection{Análise da Eleição em Anel e Resolução de Amostragem}
-Com a régua de amostragem de alta resolução ajustada para 0,5~ms e reutilização de canal gRPC persistente, a Tabela~\ref{tab:ring} revela com nitidez a complexidade assintótica $O(N)$ do algoritmo de anel: a latência média de convergência escala linearmente de 10,19~ms com 3 nós para 15,76~ms em 5 nós e 25,81~ms em 10 nós. Esse crescimento reflete a propagação sequencial das mensagens ($N$ encaminhamentos de eleição e $N$ de anúncio do coordenador, totalizando $2N$ saltos). O desvio padrão manteve-se reduzido ($\le 2,40$~ms), e o p99 atingiu 29,45~ms em 10 nós. A superação do artefato anterior (que ficava artificialmente retido em $\approx 107$~ms devido a sondagens com sono de 100~ms) confirma que a redução da janela de observação permitiu capturar a dinâmica física real do anel sobre a rede loopback local.
+\subsection{Análise da Eleição em Anel e Escalabilidade}
+A Tabela~\ref{tab:ring} evidencia com clareza a complexidade assintótica $O(N)$ da eleição de líder em anel: a latência média de convergência escala linearmente de 10,19~ms com 3 nós para 15,76~ms em 5 nós e 25,81~ms em 10 nós. Esse comportamento reflete diretamente a natureza sequencial da propagação das mensagens na topologia circular, na qual ocorrem $N$ encaminhamentos para a coleta de identificadores (\texttt{PassElection}) e mais $N$ saltos para a difusão do resultado (\texttt{AnnounceCoordinator}), totalizando $2N$ mensagens no caminho sem falhas.
+
+O desvio padrão permaneceu baixo e controlado em todas as escalas ($\le 2,40$~ms), demonstrando alta repetibilidade entre as rodadas. O percentil de cauda (p99) atingiu 29,45~ms em 10 nós, coerente com a acumulação de atrasos de escalonamento dos processos e chaveamento de contexto no host. A instrumentação de medição empregada, baseada em canal gRPC persistente e amostragem de alta resolução (0,5~ms), mostrou-se essencial para capturar com precisão a dinâmica temporal de baixa latência do anel sobre a rede virtual local sem introduzir distorções de quantização.
 
 \section{Ameaças à Validade e Limitações}
 \begin{itemize}
